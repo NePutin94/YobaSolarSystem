@@ -8,6 +8,7 @@
 #include <random>
 using namespace std;
 using namespace sf;
+
 sf::Texture tex1;
 sf::Texture tex2;
 sf::Texture tex3;
@@ -127,10 +128,11 @@ public:
 	}
 	void accelerationObjects()
 	{
-		bool collision = false;
+		bool collision = false;//глобальный флаг True, если iter и iter2 касаются
 
 		for (auto iter = objectsArray.begin(); iter != objectsArray.end(); iter++)
 		{
+			//меняем текстуру йобы, в зависимости от ее скорости
 			if (abs((*iter)->acceleration.x) > 0 || abs((*iter)->acceleration.y) > 0)
 			{
 				(*iter)->obj.setTexture(&tex1);
@@ -146,6 +148,7 @@ public:
 				(*iter)->obj.setTexture(&tex3);
 				(*iter)->obj.setTextureRect(sf::IntRect(0, 0, 512, 512));
 			}
+			//Чтобы йобы не улетали слишком далеко друг от друга
 			if ((*iter)->obj.getPosition().x > 2000)
 				(*iter)->addedAcceleration({ -0.08,0 });
 			if ((*iter)->obj.getPosition().y > 2000)
@@ -175,8 +178,8 @@ public:
 				if (collision)
 				{
 					Vector2f direction2(
-						(*iter)->obj.getPosition().x < (*iter2)->obj.getPosition().x ? -0.5 : 2,
-						(*iter)->obj.getPosition().y < (*iter2)->obj.getPosition().y ? -2 : 0.5);
+						(*iter)->obj.getPosition().x < (*iter2)->obj.getPosition().x ? -1 : 1,
+						(*iter)->obj.getPosition().y < (*iter2)->obj.getPosition().y ? -1 : 1);
 					if ((*iter2)->m > (*iter)->m)
 					{
 						(*iter)->addedAcceleration(Vector2f(0.01, 0.01) * direction2);
@@ -209,6 +212,7 @@ public:
 				}
 				if (!collision)
 				{
+					//сила действет на йобу с меньшей массой
 					if ((*iter2)->m > (*iter)->m)
 						(*iter)->addedAcceleration(Vector2f(fGmassJtoI, fGmassJtoI) * direction);
 					else
@@ -225,9 +229,7 @@ public:
 	void DrawingAllObjects(sf::RenderWindow& w)
 	{
 		for (CelestialObject* object : objectsArray)
-		{
 			w.draw(*object);
-		}
 	}
 };
 
@@ -236,16 +238,20 @@ int main()
 	tex1.loadFromFile("yoba3.png");
 	tex2.loadFromFile("yoba2.png");
 	tex3.loadFromFile("yoba4.png");
-	World gravity;
+
+	World world;
+
 	sf::View view;
 	sf::FloatRect viewPort = { 0,0,1800,1000 };
 	view.reset(viewPort);
-	sf::RenderWindow window(sf::VideoMode(1800, 1000), "yobaSolarSystem");
-	window.setFramerateLimit(100);
-	srand(time(0));
 	sf::Vector2f center = { viewPort.width / 2,viewPort.height / 2 };
 
-	/*for (int i = 1; i < 4; i++)
+	sf::RenderWindow window(sf::VideoMode(1800, 1000), "yobaSolarSystem");
+	window.setFramerateLimit(100);
+
+	/*
+	srand(time(0));
+	for (int i = 1; i < 4; i++)
 	{
 		int r = rand() % 40 + 15;
 		int m = r * 40;
@@ -253,9 +259,11 @@ int main()
 		Vector2f direction(1 - rand() % 2, (1 - rand() % 2));
 		gravity.add(CelestialObject(position, direction, r, m));
 	}*/
-	gravity.add(CelestialObject(Vector2f(300, 300), Vector2f(0, 0), 25, 1200));
-	gravity.add(CelestialObject(Vector2f(300, 484), Vector2f(2.2f, 0), 15, 735));
-	gravity.add(CelestialObject(Vector2f(300, 580), Vector2f(1.f, 0), 10, 235));
+
+	world.add(CelestialObject(Vector2f(300, 300), Vector2f(0, 0), 25, 1200));
+	world.add(CelestialObject(Vector2f(300, 484), Vector2f(2.2f, 0), 15, 735));
+	world.add(CelestialObject(Vector2f(300, 580), Vector2f(1.f, 0), 10, 235));
+
 	while (window.isOpen())
 	{
 		sf::Event event;
@@ -275,7 +283,6 @@ int main()
 					viewPort.width *= 1.2;
 					viewPort.height *= 1.2;
 				}
-
 			}
 		}
 		if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
@@ -287,13 +294,13 @@ int main()
 		if (sf::Keyboard::isKeyPressed(sf::Keyboard::D))
 			center.x += 10;
 
-		gravity.accelerationObjects();
-		gravity.moveObjects();
+		world.accelerationObjects();
+		world.moveObjects();
 		view.reset(viewPort);
 		view.setCenter(center);
 		window.setView(view);
 		window.clear();
-		gravity.DrawingAllObjects(window);
+		world.DrawingAllObjects(window);
 		window.display();
 	}
 
