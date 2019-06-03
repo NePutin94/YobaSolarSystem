@@ -6,22 +6,31 @@
 #include <sstream>
 #include <SFML/Graphics.hpp>
 #include <random>
+#include "imgui.h"
+#include "imgui-sfml.h"
 using namespace std;
-using namespace sf;
+typedef sf::Vector2f vec2;
 
 sf::Texture tex1;
 sf::Texture tex2;
 sf::Texture tex3;
 
-sf::Vector2f GetIntersectionDepth(const sf::FloatRect& rectA, const FloatRect& rectB)
+vec2 operator * (const vec2& vector, const vec2& vector2)
+{
+	vec2 dot;
+	dot.x = vector2.x * vector.x;
+	dot.y = vector2.y * vector.y;
+	return dot;
+}
+vec2 GetIntersectionDepth(const sf::FloatRect& rectA, const sf::FloatRect& rectB)
 {
 	float halfWidthA = rectA.width / 2.0f;
 	float halfHeightA = rectA.height / 2.0f;
 	float halfWidthB = rectB.width / 2.0f;
 	float halfHeightB = rectB.height / 2.0f;
 
-	Vector2f centerA(rectA.left + halfWidthA, rectA.top + halfHeightA);
-	Vector2f centerB(rectB.left + halfWidthB, rectB.top + halfHeightB);
+	vec2 centerA(rectA.left + halfWidthA, rectA.top + halfHeightA);
+	vec2 centerB(rectB.left + halfWidthB, rectB.top + halfHeightB);
 
 	float distanceX = centerA.x - centerB.x;
 	float distanceY = centerA.y - centerB.y;
@@ -29,34 +38,34 @@ sf::Vector2f GetIntersectionDepth(const sf::FloatRect& rectA, const FloatRect& r
 	float minDistanceY = halfHeightA + halfHeightB;
 
 	if (abs(distanceX) >= minDistanceX || abs(distanceY) >= minDistanceY)
-		return Vector2f(0, 0);
+		return vec2(0, 0);
 
 	float depthX = distanceX > 0 ? minDistanceX - distanceX : -minDistanceX - distanceX;
 	float depthY = distanceY > 0 ? minDistanceY - distanceY : -minDistanceY - distanceY;
 
-	return Vector2f(depthX, depthY);
+	return vec2(depthX, depthY);
 }
+
 class CelestialObject
 {
 public:
 	sf::CircleShape obj;
-	Vector2f acceleration;
+	vec2 acceleration;
 	int r, m;
 
 	CelestialObject()
 	{
-		acceleration = { 0,0 };
+		acceleration = { 0, 0 };
 		r = 0;
 		m = 0;
 	}
-	CelestialObject(Vector2f _pos, Vector2f _vel, int _r, int _m) : acceleration(_vel), r(_r), m(_m)
+	CelestialObject(vec2 _pos, vec2 _vel, int _r, int _m) : acceleration(_vel), r(_r), m(_m)
 	{
 		obj.setPosition(_pos);
 		obj.setRadius(r);
-		obj.setOrigin(sf::Vector2f(r / 2, r / 2));
 		obj.setTexture(&tex1);
 		obj.setTextureRect(sf::IntRect(0, 0, 792, 792));
-		//obj.setFillColor(sf::Color::Red);
+		obj.setOrigin(obj.getLocalBounds().width / 2, obj.getLocalBounds().height / 2);
 		r = _r;
 		m = _m;
 	}
@@ -64,7 +73,7 @@ public:
 	{
 		acceleration = acceleration + a;
 	}
-	operator Drawable& ()
+	operator sf::Drawable& ()
 	{
 		return obj;
 	}
@@ -77,18 +86,16 @@ public:
 		r += _r;
 		obj.setRadius(r);
 	}
-	void addedPosition(Vector2f vector)
+	void addedPosition(vec2 vector)
 	{
 		obj.move(vector);
 	}
+	vec2 getAccelerationVec()
+	{
+		return vec2(obj.getPosition() + acceleration * vec2(20, 20));
+	}
 };
-Vector2f operator * (const Vector2f& vector, const Vector2f& vector2)
-{
-	sf::Vector2f dot;
-	dot.x = vector2.x * vector.x;
-	dot.y = vector2.y * vector.y;
-	return dot;
-}
+
 class World
 {
 public:
@@ -100,27 +107,28 @@ public:
 		if (o1->obj.getGlobalBounds().intersects(o2->obj.getGlobalBounds()))
 		{
 			collision = true;
-			//if (o1->m < o2->m)
-			//{
-			//	auto intersec = GetIntersectionDepth(o1->obj.getGlobalBounds(), o2->obj.getGlobalBounds());
-			//	if (abs(intersec.x) > abs(intersec.y))
-			//		intersec.x = 0;
-			//	else
-			//		intersec.y = 0;
-			//	o1->obj.setPosition(o1->obj.getPosition() + intersec);
-			//}
-			//else
-			//{
-			//	auto intersec = GetIntersectionDepth(o2->obj.getGlobalBounds(), o1->obj.getGlobalBounds());
-			//	if (abs(intersec.x) > abs(intersec.y))
-			//		intersec.x = 0;
-			//	else
-			//		intersec.y = 0;
-			//	o2->obj.setPosition(o2->obj.getPosition() + intersec);
-			//}
+			/*if (o1->m < o2->m)
+			{
+				auto intersec = GetIntersectionDepth(o1->obj.getGlobalBounds(), o2->obj.getGlobalBounds());
+				if (abs(intersec.x) > abs(intersec.y))
+					intersec.x = 0;
+				else
+					intersec.y = 0;
+				o1->obj.setPosition(o1->obj.getPosition() + intersec);
+			}
+			else
+			{
+				auto intersec = GetIntersectionDepth(o2->obj.getGlobalBounds(), o1->obj.getGlobalBounds());
+				if (abs(intersec.x) > abs(intersec.y))
+					intersec.x = 0;
+				else
+					intersec.y = 0;
+				o2->obj.setPosition(o2->obj.getPosition() + intersec);
+			}*/
 			return 0.0000001;
 		}
-		return (o1->m * o2->m / pow(distance, 2)) / 60000;
+		return (o1->m * o2->m / sqrt(distance)) / 90000000;
+		//return (o1->m * o2->m / pow(distance,2)) / 60000; //ведет себя менее стабильно Йобу достаточно сложно вывести на орбиту
 	}
 	void add(CelestialObject object)
 	{
@@ -148,75 +156,82 @@ public:
 				(*iter)->obj.setTexture(&tex3);
 				(*iter)->obj.setTextureRect(sf::IntRect(0, 0, 512, 512));
 			}
-			//Чтобы йобы не улетали слишком далеко друг от друга
+			//Чтобы йобы не улетали слишком далеко друг от друга, можно убрать
 			if ((*iter)->obj.getPosition().x > 2000)
-				(*iter)->addedAcceleration({ -0.08,0 });
+				(*iter)->addedAcceleration({ -0.08, 0 });
 			if ((*iter)->obj.getPosition().y > 2000)
-				(*iter)->addedAcceleration({ 0,-0.08 });
+				(*iter)->addedAcceleration({ 0, -0.08 });
 
 			if ((*iter)->obj.getPosition().x < -2000)
-				(*iter)->addedAcceleration({ 0.08,0 });
+				(*iter)->addedAcceleration({ 0.08, 0 });
 			if ((*iter)->obj.getPosition().y < -2000)
-				(*iter)->addedAcceleration({ 0,0.08 });
+				(*iter)->addedAcceleration({ 0, 0.08 });
 
 			for (auto iter2 = iter + 1; iter2 != objectsArray.end(); iter2++)
 			{
 
-				float fG = ForceOfGravity(collision, *iter, *iter2);//некая сила с которой йобы действуют друг на друга
+				float fG = ForceOfGravity(collision, *iter, *iter2);
 				float distance = sqrt(pow((*iter2)->obj.getPosition().x - (*iter)->obj.getPosition().x, 2) + pow((*iter2)->obj.getPosition().y - (*iter)->obj.getPosition().y, 2));
 				//Отношение их масс:
-				float massJtoI = ((float)(*iter2)->m / (*iter)->m);
-				float massItoJ = ((float)(*iter)->m / (*iter2)->m);
+				float massJtoI = ((float)(*iter2)->m / (*iter)->m); /// iter2/iter mass
+				float massItoJ = ((float)(*iter)->m / (*iter2)->m); /// iter/iter2 mass
 
-				//конечная сила их взаимодействия сила 
+				//конечная сила взаимодействия двух йоб
+				float fGmassJtoI = fG * pow(massJtoI, 2) * sqrt(sqrt(distance));
+				float fGmassItoJ = fG * pow(massItoJ, 2) * sqrt(sqrt(distance));
+
+				/*
 				float fGmassJtoI = fG * pow(massJtoI, 2) * sqrt(distance);
 				float fGmassItoJ = fG * pow(massItoJ, 2) * sqrt(distance);
+				*/
 
-				Vector2f direction(
+				vec2 direction(
 					(*iter)->obj.getPosition().x > (*iter2)->obj.getPosition().x ? -1 : 1,
 					(*iter)->obj.getPosition().y > (*iter2)->obj.getPosition().y ? -1 : 1);
 				if (collision)
 				{
-					Vector2f direction2(
+					vec2 direction2(
 						(*iter)->obj.getPosition().x < (*iter2)->obj.getPosition().x ? -1 : 1,
 						(*iter)->obj.getPosition().y < (*iter2)->obj.getPosition().y ? -1 : 1);
 					if ((*iter2)->m > (*iter)->m)
 					{
-						(*iter)->addedAcceleration(Vector2f(0.01, 0.01) * direction2);
-
-						////Change big object
+						(*iter)->addedAcceleration(vec2(0.01, 0.01) * direction2);
 						float newR = (*iter)->r * massItoJ;
 						float newMass = (*iter)->m * 0.5f;
-						//(*iter2)->addMass((*iter)->m * 0.5f);
-						//(*iter2)->addRadius((*iter)->r * massItoJ);
-						//(*iter)->addRadius(-newR);
-						//(*iter)->addMass(-newMass);
-						////Delete small
-						//delete objectsArray[i];
-						//objectsArray.erase(objectsArray.begin() + i);
+						/*(*iter2)->addMass((*iter)->m * 0.5f);
+						(*iter2)->addRadius((*iter)->r * massItoJ);
+						(*iter)->addRadius(-newR);
+						(*iter)->addMass(-newMass);
+						delete objectsArray[i];
+						objectsArray.erase(objectsArray.begin() + i);*/
 					}
 					else
 					{
-						(*iter2)->addedAcceleration(Vector2f(0.01, 0.01) * -direction2);
+						(*iter2)->addedAcceleration(vec2(0.01, 0.01) * -direction2);
 						float newR = (*iter2)->r * massItoJ;
 						float newMass = (*iter2)->m * 0.5f;
-						////Change big object
-						//(*iter)->addMass(newMass);
-						//(*iter)->addRadius(newR);
-						//(*iter2)->addRadius(-newR);
-						//(*iter2)->addMass(-newMass);
-						////Delete small
-						//delete objectsArray[j];
-						//objectsArray.erase(objectsArray.begin() + j);
+						/*
+						(*iter)->addMass(newMass);
+						(*iter)->addRadius(newR);
+						(*iter2)->addRadius(-newR);
+						(*iter2)->addMass(-newMass);
+						delete objectsArray[j];
+						objectsArray.erase(objectsArray.begin() + j);*/
 					}
 				}
 				if (!collision)
 				{
-					//сила действет на йобу с меньшей массой
+					//максимально уменьшаяем силу для йобы с большей массой
 					if ((*iter2)->m > (*iter)->m)
-						(*iter)->addedAcceleration(Vector2f(fGmassJtoI, fGmassJtoI) * direction);
+					{
+						(*iter)->addedAcceleration(vec2(fGmassJtoI, fGmassJtoI) * direction);
+						(*iter2)->addedAcceleration(vec2(fGmassItoJ / sqrt(distance) * massItoJ, fGmassItoJ / sqrt(distance) * massItoJ) * -direction);
+					}
 					else
-						(*iter2)->addedAcceleration(Vector2f(fGmassItoJ, fGmassItoJ) * -direction);
+					{
+						(*iter)->addedAcceleration(vec2(fGmassJtoI / sqrt(distance) * massJtoI, fGmassJtoI / sqrt(distance) * massJtoI) * direction);
+						(*iter2)->addedAcceleration(vec2(fGmassItoJ, fGmassItoJ) * -direction);
+					}
 				}
 			}
 		}
@@ -225,11 +240,54 @@ public:
 	{
 		for (CelestialObject* object : objectsArray)
 			object->addedPosition(object->acceleration);
+
 	}
 	void DrawingAllObjects(sf::RenderWindow& w)
 	{
 		for (CelestialObject* object : objectsArray)
 			w.draw(*object);
+		for (CelestialObject* object : objectsArray)
+		{
+			sf::VertexArray triangle(sf::Lines, 2);
+
+			// define the position of the triangle's points
+			triangle[0].position = object->obj.getPosition();
+			triangle[1].position = object->getAccelerationVec();
+			triangle[0].color = sf::Color::Red;
+			triangle[1].color = sf::Color::Red;
+			w.draw(triangle);
+		}
+	}
+	void Debug()
+	{
+		ImGui::SetNextWindowSize(ImVec2(430, 450), ImGuiCond_FirstUseEver || ImGuiWindowFlags_NoResize);
+		if (!ImGui::Begin("ObjEditor"))
+		{
+			ImGui::End();
+			return;
+		}
+
+		ImGui::BeginChild("Objects", ImVec2(ImGui::GetWindowSize().x - 20, ImGui::GetWindowSize().y - 40), true);
+		int i = 0;
+		for (auto obj : objectsArray)
+		{
+			if (ImGui::TreeNode(to_string(i).c_str()))
+			{
+				ImGui::Text("acceleration %.20f", obj->acceleration);
+				ImGui::Text("mass %i", obj->m);
+				ImGui::Text("radius %i", obj->r);
+				ImGui::Separator();
+				static vec2 acceleration;
+				ImGui::DragFloat("vel.x", &acceleration.x, 0.01f, -0.9f, 0.9f);
+				ImGui::DragFloat("vel.y", &acceleration.y, 0.01f, -0.9f, 0.9f);
+				if (ImGui::Button("addAc"))
+					obj->addedAcceleration(acceleration);
+				ImGui::TreePop();
+			}
+			++i;
+		}
+		ImGui::EndChild();
+		ImGui::End();
 	}
 };
 
@@ -242,13 +300,12 @@ int main()
 	World world;
 
 	sf::View view;
-	sf::FloatRect viewPort = { 0,0,1800,1000 };
+	sf::FloatRect viewPort = { 0, 0, 1800, 1000 };
 	view.reset(viewPort);
-	sf::Vector2f center = { viewPort.width / 2,viewPort.height / 2 };
-
+	vec2 center = { viewPort.width / 2, viewPort.height / 2 };
 	sf::RenderWindow window(sf::VideoMode(1800, 1000), "yobaSolarSystem");
 	window.setFramerateLimit(100);
-
+	ImGui::SFML::Init(window);
 	/*
 	srand(time(0));
 	for (int i = 1; i < 4; i++)
@@ -260,15 +317,16 @@ int main()
 		gravity.add(CelestialObject(position, direction, r, m));
 	}*/
 
-	world.add(CelestialObject(Vector2f(300, 300), Vector2f(0, 0), 25, 1200));
-	world.add(CelestialObject(Vector2f(300, 484), Vector2f(2.2f, 0), 15, 735));
-	world.add(CelestialObject(Vector2f(300, 580), Vector2f(1.f, 0), 10, 235));
-
+	world.add(CelestialObject(vec2(300, 300), vec2(0, 0), 25, 1200));
+	world.add(CelestialObject(vec2(300, 430), vec2(1.5f, 0), 15, 735));
+	//world.add(CelestialObject(Vector2f(300, 580), Vector2f(1.5f, 0), 10, 435));
+	sf::Clock deltaClock;
 	while (window.isOpen())
 	{
 		sf::Event event;
 		while (window.pollEvent(event))
 		{
+			ImGui::SFML::ProcessEvent(event);
 			if (event.type == sf::Event::Closed)
 				window.close();
 			if (event.type == sf::Event::EventType::KeyReleased)
@@ -294,13 +352,17 @@ int main()
 		if (sf::Keyboard::isKeyPressed(sf::Keyboard::D))
 			center.x += 10;
 
+		ImGui::SFML::Update(window, deltaClock.restart());
 		world.accelerationObjects();
 		world.moveObjects();
+		world.Debug();
 		view.reset(viewPort);
 		view.setCenter(center);
 		window.setView(view);
 		window.clear();
+
 		world.DrawingAllObjects(window);
+		ImGui::SFML::Render(window);
 		window.display();
 	}
 
