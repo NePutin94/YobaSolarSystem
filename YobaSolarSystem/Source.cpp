@@ -98,6 +98,8 @@ public:
 
 class World
 {
+	enum debug_state { AddNewObject = 0, DebugWindow };
+	debug_state state;
 public:
 	std::vector<CelestialObject*> objectsArray;
 	float ForceOfGravity(bool& collision, CelestialObject* o1, CelestialObject* o2)
@@ -127,7 +129,7 @@ public:
 			}*/
 			return 0.0000001;
 		}
-		return (o1->m * o2->m / sqrt(distance)) / 90000000;
+		return (o1->m * o2->m / sqrt(distance)) / 9000000;
 		//return (o1->m * o2->m / pow(distance,2)) / 60000; //ведет себ€ менее стабильно …обу достаточно сложно вывести на орбиту
 	}
 	void add(CelestialObject object)
@@ -151,7 +153,7 @@ public:
 				(*iter)->obj.setTexture(&tex2);
 				(*iter)->obj.setTextureRect(sf::IntRect(0, 0, 128, 128));
 			}
-			if (abs((*iter)->acceleration.x) > 2.6 || abs((*iter)->acceleration.y) > 2.6)
+			if (abs((*iter)->acceleration.x) > 2 || abs((*iter)->acceleration.y) > 2)
 			{
 				(*iter)->obj.setTexture(&tex3);
 				(*iter)->obj.setTextureRect(sf::IntRect(0, 0, 512, 512));
@@ -177,12 +179,13 @@ public:
 				float massItoJ = ((float)(*iter)->m / (*iter2)->m); /// iter/iter2 mass
 
 				//конечна€ сила взаимодействи€ двух йоб
-				float fGmassJtoI = fG * pow(massJtoI, 2) * sqrt(sqrt(distance));
-				float fGmassItoJ = fG * pow(massItoJ, 2) * sqrt(sqrt(distance));
+				float fGmassJtoI = fG * pow(massJtoI, 2) / pow(distance, 0.0625f);
+				float fGmassItoJ = fG * pow(massItoJ, 2) / pow(distance, 0.0625f);
 
 				/*
-				float fGmassJtoI = fG * pow(massJtoI, 2) * sqrt(distance);
-				float fGmassItoJ = fG * pow(massItoJ, 2) * sqrt(distance);
+				–аботает на небольших рассто€ни€х между йобами (100-2000)
+				float fGmassJtoI = fG * pow(massJtoI, 2) * sqrt(sqrt(distance)); //чем больше дистанци€ тем больше сила ! ! ! !
+				float fGmassItoJ = fG * pow(massItoJ, 2) * sqrt(sqrt(distance));
 				*/
 
 				vec2 direction(
@@ -224,8 +227,8 @@ public:
 					//максимально уменьша€ем силу дл€ йобы с большей массой
 					if ((*iter2)->m > (*iter)->m)
 					{
-						(*iter)->addedAcceleration(vec2(fGmassJtoI, fGmassJtoI) * direction);
-						(*iter2)->addedAcceleration(vec2(fGmassItoJ / sqrt(distance) * massItoJ, fGmassItoJ / sqrt(distance) * massItoJ) * -direction);
+						(*iter)->addedAcceleration(vec2(fGmassJtoI * (distance * massItoJ), fGmassJtoI * (distance * massItoJ)) * direction);
+						(*iter2)->addedAcceleration(vec2(fGmassItoJ, fGmassItoJ) * -direction);
 					}
 					else
 					{
@@ -258,35 +261,94 @@ public:
 			w.draw(triangle);
 		}
 	}
+
 	void Debug()
 	{
+		auto lambda_addNewObject = [](auto& objectsArray)
+		{
+
+			ImGui::BeginChild("AddObject", ImVec2(ImGui::GetWindowSize().x - 20, ImGui::GetWindowSize().y - 40), true);
+			ImGui::PushItemWidth(80.f);
+			static vec2 pos;
+			ImGui::InputFloat("pos.x", &pos.x, 0, 0, 0);
+			ImGui::InputFloat("pos.y", &pos.y, 0, 0, 0);
+			ImGui::Separator();
+			static vec2 acceleration;
+			ImGui::InputFloat("vel.x", &acceleration.x, 0, 0, 0);
+			ImGui::InputFloat("vel.y", &acceleration.y, 0, 0, 0);
+			ImGui::Separator();
+			static int r;
+			ImGui::InputInt("r", &r, 0, 0, 0);
+			ImGui::Separator();
+			static int m;
+			ImGui::InputInt("m", &m, 0, 0, 0);
+			ImGui::PopItemWidth();
+			if (ImGui::Button("add"))
+			{
+				CelestialObject object(pos, acceleration, r, m);
+				objectsArray.push_back(new CelestialObject(object));
+			}
+			ImGui::EndChild();
+		};
+		auto lambda_debugWindow  = [](auto& objectsArray)
+		{
+			ImGui::BeginChild("Objects", ImVec2(ImGui::GetWindowSize().x - 20, ImGui::GetWindowSize().y - 40), true);
+			int i = 0;
+			for (auto obj : objectsArray)
+			{
+				if (ImGui::TreeNode(to_string(i).c_str()))
+				{
+					obj->obj.setFillColor(sf::Color(90, 150, 220));
+					ImGui::Text("acceleration %.20f", obj->acceleration);
+					ImGui::Text("mass %i", obj->m);
+					ImGui::Text("radius %i", obj->r);
+					ImGui::Separator();
+					static vec2 acceleration;
+					ImGui::DragFloat("vel.x", &acceleration.x, 0.01f, -0.9f, 0.9f);
+					ImGui::DragFloat("vel.y", &acceleration.y, 0.01f, -0.9f, 0.9f);
+					if (ImGui::Button("addAc"))
+						obj->addedAcceleration(acceleration);
+					ImGui::TreePop();
+				}
+				else
+					obj->obj.setFillColor(sf::Color::White);
+				++i;
+			}
+			ImGui::EndChild();
+		};
+
 		ImGui::SetNextWindowSize(ImVec2(430, 450), ImGuiCond_FirstUseEver || ImGuiWindowFlags_NoResize);
 		if (!ImGui::Begin("ObjEditor"))
 		{
 			ImGui::End();
 			return;
 		}
-
-		ImGui::BeginChild("Objects", ImVec2(ImGui::GetWindowSize().x - 20, ImGui::GetWindowSize().y - 40), true);
-		int i = 0;
-		for (auto obj : objectsArray)
+		if (ImGui::BeginMainMenuBar())
 		{
-			if (ImGui::TreeNode(to_string(i).c_str()))
+			if (ImGui::BeginMenu("Edit"))
 			{
-				ImGui::Text("acceleration %.20f", obj->acceleration);
-				ImGui::Text("mass %i", obj->m);
-				ImGui::Text("radius %i", obj->r);
-				ImGui::Separator();
-				static vec2 acceleration;
-				ImGui::DragFloat("vel.x", &acceleration.x, 0.01f, -0.9f, 0.9f);
-				ImGui::DragFloat("vel.y", &acceleration.y, 0.01f, -0.9f, 0.9f);
-				if (ImGui::Button("addAc"))
-					obj->addedAcceleration(acceleration);
-				ImGui::TreePop();
+				if (ImGui::MenuItem("addNewObject", "", state == AddNewObject))
+					state = AddNewObject;
+
+				if (ImGui::MenuItem("debugWindow", "", state == DebugWindow))
+					state = DebugWindow;
+
+				ImGui::EndMenu();
 			}
-			++i;
+			ImGui::EndMainMenuBar();
 		}
-		ImGui::EndChild();
+		switch (state)
+		{
+		case AddNewObject:
+			lambda_addNewObject(objectsArray);
+			break;
+		case DebugWindow:
+			lambda_debugWindow(objectsArray);
+			break;
+		default:
+			break;
+		}
+
 		ImGui::End();
 	}
 };
@@ -300,7 +362,7 @@ int main()
 	World world;
 
 	sf::View view;
-	sf::FloatRect viewPort = { 0, 0, 1800, 1000 };
+	sf::FloatRect viewPort = { 0, 0, 1920, 1080 };
 	view.reset(viewPort);
 	vec2 center = { viewPort.width / 2, viewPort.height / 2 };
 	sf::RenderWindow window(sf::VideoMode(1800, 1000), "yobaSolarSystem");
@@ -318,8 +380,8 @@ int main()
 	}*/
 
 	world.add(CelestialObject(vec2(300, 300), vec2(0, 0), 25, 1200));
-	world.add(CelestialObject(vec2(300, 430), vec2(1.5f, 0), 15, 735));
-	//world.add(CelestialObject(Vector2f(300, 580), Vector2f(1.5f, 0), 10, 435));
+	world.add(CelestialObject(vec2(300, 980), vec2(3.1f, 0), 15, 735));
+	//world.add(CelestialObject(vec2(300, 480), vec2(1.6f, 0), 10, 535));
 	sf::Clock deltaClock;
 	while (window.isOpen())
 	{
@@ -344,11 +406,11 @@ int main()
 			}
 		}
 		if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
-			center.y += 10;
+			center.y -= 10;
 		if (sf::Keyboard::isKeyPressed(sf::Keyboard::A))
 			center.x -= 10;
 		if (sf::Keyboard::isKeyPressed(sf::Keyboard::S))
-			center.y -= 10;
+			center.y += 10;
 		if (sf::Keyboard::isKeyPressed(sf::Keyboard::D))
 			center.x += 10;
 
