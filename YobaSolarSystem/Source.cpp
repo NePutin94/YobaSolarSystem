@@ -1,19 +1,22 @@
-#define SOL_ALL_SAFETIES_ON 1
-#include <sol/sol.hpp>
+ï»¿
+#define SOL_ALL_SAFETIES_ON 0
+//#include <sol/sol.hpp>
 #include "imgui-SFML.h"
 #include "imgui.h"
 #include <SFML/Graphics.hpp>
+#include <chrono>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
-#include <cstdio>
-#include <chrono>
+#include <sol/sol.hpp>
+
 using namespace std;
 sf::Texture tex1;
 sf::Texture tex2;
 sf::Texture tex3;
 using vec2 = sf::Vector2f;
 constexpr float ftStep{ 1.f }, ftSlice{ 1.f };
-vec2 operator * (const vec2& vector, const vec2& vector2)
+vec2 operator*(const vec2& vector, const vec2& vector2)
 {
 	vec2 dot;
 	dot.x = vector2.x * vector.x;
@@ -27,7 +30,9 @@ vec2 multiply(const vec2& vector, const vec2& vector2)
 	dot.y = vector2.y * vector.y;
 	return dot;
 }
-vec2 GetIntersectionDepth(const sf::FloatRect& rectA, const sf::FloatRect& rectB)
+vec2 invert(sf::Vector2f vec) { return vec * sf::Vector2f(-1, -1); }
+vec2 GetIntersectionDepth(const sf::FloatRect& rectA,
+	const sf::FloatRect& rectB)
 {
 	float halfWidthA = rectA.width / 2.0f;
 	float halfHeightA = rectA.height / 2.0f;
@@ -45,8 +50,10 @@ vec2 GetIntersectionDepth(const sf::FloatRect& rectA, const sf::FloatRect& rectB
 	if (abs(distanceX) >= minDistanceX || abs(distanceY) >= minDistanceY)
 		return vec2(0, 0);
 
-	float depthX = distanceX > 0 ? minDistanceX - distanceX : -minDistanceX - distanceX;
-	float depthY = distanceY > 0 ? minDistanceY - distanceY : -minDistanceY - distanceY;
+	float depthX =
+		distanceX > 0 ? minDistanceX - distanceX : -minDistanceX - distanceX;
+	float depthY =
+		distanceY > 0 ? minDistanceY - distanceY : -minDistanceY - distanceY;
 
 	return vec2(depthX, depthY);
 }
@@ -57,39 +64,30 @@ public:
 	sf::CircleShape obj;
 	vec2 acceleration;
 	int r, m;
-
+	sf::Vector2f pos;
 	CelestialObject()
 	{
 		acceleration = { 0, 0 };
 		r = 0;
 		m = 0;
 	}
-	CelestialObject(vec2 _pos, vec2 _vel, int _r, int _m) : acceleration(_vel), r(_r), m(_m)
+	CelestialObject(vec2 _pos, vec2 _vel, int _r, int _m)
+		: acceleration(_vel), r(_r), m(_m)
 	{
 		obj.setPosition(_pos);
 		obj.setRadius(r);
 		obj.setTexture(&tex1);
 		obj.setTextureRect(sf::IntRect(0, 0, 792, 792));
-		obj.setOrigin(obj.getLocalBounds().width / 2, obj.getLocalBounds().height / 2);
+		obj.setOrigin(obj.getLocalBounds().width / 2,
+			obj.getLocalBounds().height / 2);
 		r = _r;
 		m = _m;
+		pos = _pos;
 	}
-	int getMass()
-	{
-		return m;
-	}
-	void addedAcceleration(sf::Vector2f a)
-	{
-		acceleration = acceleration + a;
-	}
-	operator sf::Drawable& ()
-	{
-		return obj;
-	}
-	void addMass(float _m)
-	{
-		m += _m;
-	}
+	int getMass() { return m; }
+	void addedAcceleration(sf::Vector2f a) { acceleration = acceleration + a; }
+	operator sf::Drawable& () { return obj; }
+	void addMass(float _m) { m += _m; }
 	void addRadius(float _r)
 	{
 		r += _r;
@@ -98,6 +96,7 @@ public:
 	void addedPosition(vec2 vector)
 	{
 		obj.move(vector);
+		pos = obj.getPosition();
 	}
 	vec2 getAccelerationVec()
 	{
@@ -107,52 +106,117 @@ public:
 
 class World
 {
-	enum debug_state { AddNewObject = 0, DebugWindow };
+	enum debug_state
+	{
+		AddNewObject = 0,
+		DebugWindow,
+		SetViewPort
+	};
 	debug_state state;
+	sf::RenderWindow* w;
+	sf::View* view;
+	CelestialObject* centralObj;
 public:
 	std::vector<CelestialObject*> objectsArray;
 	std::vector<sf::VertexArray> vertex;
+	CelestialObject* biggestObject;
+	World() = default;
+	World(sf::RenderWindow* window, sf::View* _view) : w(window), view(_view)
+	{
+
+	}
+
+	void clearVertexArray() { vertex.clear(); }
+
 	float ForceOfGravity(CelestialObject* o1, CelestialObject* o2)
 	{
-		float distance = sqrt(pow(o1->obj.getPosition().x - o2->obj.getPosition().x, 2) + pow(o1->obj.getPosition().y - o2->obj.getPosition().y, 2));
+		float distance =
+			sqrt(pow(o1->obj.getPosition().x - o2->obj.getPosition().x, 2) +
+				pow(o1->obj.getPosition().y - o2->obj.getPosition().y, 2));
 		return (o1->m * o2->m / sqrt(distance)) / 9000000;
-		//return (o1->m * o2->m / pow(distance,2)) / 60000; //âåäåò ñåáÿ ìåíåå ñòàáèëüíî Éîáó äîñòàòî÷íî ñëîæíî âûâåñòè íà îðáèòó
+		// return (o1->m * o2->m / pow(distance,2)) / 60000; //Ð²ÐµÐ´ÐµÑ‚ ÑÐµÐ±Ñ Ð¼ÐµÐ½ÐµÐµ
+		// ÑÑ‚Ð°Ð±Ð¸Ð»ÑŒÐ½Ð¾ Ð™Ð¾Ð±Ñƒ Ð´Ð¾ÑÑ‚Ð°Ñ‚Ð¾Ñ‡Ð½Ð¾ ÑÐ»Ð¾Ð¶Ð½Ð¾ Ð²Ñ‹Ð²ÐµÑÑ‚Ð¸ Ð½Ð° Ð¾Ñ€Ð±Ð¸Ñ‚Ñƒ
 	}
+
 	void add(CelestialObject object)
 	{
 		objectsArray.push_back(new CelestialObject(object));
 	}
+
 	bool isCollision(CelestialObject* o1, CelestialObject* o2)
 	{
-		if (o1->obj.getGlobalBounds().intersects(o2->obj.getGlobalBounds()))
+		return o1->obj.getGlobalBounds().intersects(o2->obj.getGlobalBounds());
+	}
+
+	void setSprite(CelestialObject* obj)
+	{
+		if (abs(obj->acceleration.x) > 0 || abs(obj->acceleration.y) > 0)
 		{
-			return true;
+			obj->obj.setTexture(&tex1);
+			obj->obj.setTextureRect(sf::IntRect(0, 0, 792, 792));
+		}
+		if (abs(obj->acceleration.x) > 1.5 || abs(obj->acceleration.y) > 1.5)
+		{
+			obj->obj.setTexture(&tex2);
+			obj->obj.setTextureRect(sf::IntRect(0, 0, 128, 128));
+		}
+		if (abs(obj->acceleration.x) > 3.6 || abs(obj->acceleration.y) > 2)
+		{
+			obj->obj.setTexture(&tex3);
+			obj->obj.setTextureRect(sf::IntRect(0, 0, 512, 512));
 		}
 	}
+
+	void ifCollision(CelestialObject* obj1, CelestialObject* obj2)
+	{
+		vec2 direction2;
+		if ((obj1->obj.getPosition().x > obj2->obj.getPosition().x))
+			direction2.x = 1;
+		else
+			direction2.x = -1;
+
+		if ((obj1->obj.getPosition().y > obj2->obj.getPosition().y))
+			direction2.x = 1;
+		else
+			direction2.x = -1;
+
+		if (obj2->m > obj1->m)
+		{
+			obj1->addedAcceleration(vec2(0.5, 0.5) * direction2);
+			/*(*iter2)->addMass((*iter)->m * 0.5f);
+			(*iter2)->addRadius((*iter)->r * massItoJ);
+			(*iter)->addRadius(-newR);
+			(*iter)->addMass(-newMass);
+			delete objectsArray[i];
+			objectsArray.erase(objectsArray.begin() + i);*/
+		}
+		else
+		{
+			obj2->addedAcceleration(vec2(0.5, 0.5) * -direction2);
+			/*
+			(*iter)->addMass(newMass);
+			(*iter)->addRadius(newR);
+			(*iter2)->addRadius(-newR);
+			(*iter2)->addMass(-newMass);
+			delete objectsArray[j];
+			objectsArray.erase(objectsArray.begin() + j);*/
+		}
+	}
+
+	sf::Vector2f Center()
+	{
+		return (centralObj != nullptr) ? centralObj->pos : sf::Vector2f{ 0.f, 0.f };
+	}
+
 	void accelerationObjects(float t)
 	{
+		bool collision = false; //Ð³Ð»Ð¾Ð±Ð°Ð»ÑŒÐ½Ñ‹Ð¹ Ñ„Ð»Ð°Ð³ True, ÐµÑÐ»Ð¸ iter Ð¸ iter2 ÐºÐ°ÑÐ°ÑŽÑ‚Ñ
 		vertex.clear();
-		bool collision = false;//ãëîáàëüíûé ôëàã True, åñëè iter è iter2 êàñàþòñ
-
 		for (auto iter = objectsArray.begin(); iter != objectsArray.end(); iter++)
 		{
-			//ìåíÿåì òåêñòóðó éîáû, â çàâèñèìîñòè îò åå ñêîðîñòè
-			if (abs((*iter)->acceleration.x) > 0 || abs((*iter)->acceleration.y) > 0)
-			{
-				(*iter)->obj.setTexture(&tex1);
-				(*iter)->obj.setTextureRect(sf::IntRect(0, 0, 792, 792));
-			}
-			if (abs((*iter)->acceleration.x) > 1.5 || abs((*iter)->acceleration.y) > 1.5)
-			{
-				(*iter)->obj.setTexture(&tex2);
-				(*iter)->obj.setTextureRect(sf::IntRect(0, 0, 128, 128));
-			}
-			if (abs((*iter)->acceleration.x) > 3.6 || abs((*iter)->acceleration.y) > 2)
-			{
-				(*iter)->obj.setTexture(&tex3);
-				(*iter)->obj.setTextureRect(sf::IntRect(0, 0, 512, 512));
-			}
-			//×òîáû éîáû íå óëåòàëè ñëèøêîì äàëåêî äðóã îò äðóãà, ìîæíî óáðàòü
+			//Ð¼ÐµÐ½ÑÐµÐ¼ Ñ‚ÐµÐºÑÑ‚ÑƒÑ€Ñƒ Ð¹Ð¾Ð±Ñ‹, Ð² Ð·Ð°Ð²Ð¸ÑÐ¸Ð¼Ð¾ÑÑ‚Ð¸ Ð¾Ñ‚ ÐµÐµ ÑÐºÐ¾Ñ€Ð¾ÑÑ‚Ð¸
+			setSprite((*iter));
+			//Ð§Ñ‚Ð¾Ð±Ñ‹ Ð¹Ð¾Ð±Ñ‹ Ð½Ðµ ÑƒÐ»ÐµÑ‚Ð°Ð»Ð¸ ÑÐ»Ð¸ÑˆÐºÐ¾Ð¼ Ð´Ð°Ð»ÐµÐºÐ¾ Ð´Ñ€ÑƒÐ³ Ð¾Ñ‚ Ð´Ñ€ÑƒÐ³Ð°, Ð¼Ð¾Ð¶Ð½Ð¾ ÑƒÐ±Ñ€Ð°Ñ‚ÑŒ
 			if ((*iter)->obj.getPosition().x > 2000)
 				(*iter)->addedAcceleration({ -0.08, 0 });
 			if ((*iter)->obj.getPosition().y > 2000)
@@ -165,96 +229,87 @@ public:
 
 			for (auto iter2 = iter + 1; iter2 != objectsArray.end(); iter2++)
 			{
+				float fG = ForceOfGravity(*iter, *iter2);
+				collision = isCollision(*iter, *iter2);
 
-			//	float fG = ForceOfGravity(*iter, *iter2);
-		 //       bool collision = isCollision(*iter, *iter2);
-			//	if (collision)
-			//		fG = 0.00000000001f;
-			//	float distance = sqrt(pow((*iter2)->obj.getPosition().x - (*iter)->obj.getPosition().x, 2) + pow((*iter2)->obj.getPosition().y - (*iter)->obj.getPosition().y, 2));
-			////	//Îòíîøåíèå èõ ìàññ:
-			//	float massJtoI = ((float)(*iter2)->m / (*iter)->m); /// iter2/iter mass
-			//	float massItoJ = ((float)(*iter)->m / (*iter2)->m); /// iter/iter2 mass
+				float distance = sqrt(pow((*iter2)->obj.getPosition().x - (*iter)->obj.getPosition().x, 2) + pow((*iter2)->obj.getPosition().y - (*iter)->obj.getPosition().y, 2));
+				//the mass ratio
+				float massJtoI = ((float)(*iter2)->m / (*iter)->m); /// iter2/iter mass
+				float massItoJ = ((float)(*iter)->m / (*iter2)->m); /// iter/iter2 mass
 
-			////	//êîíå÷íàÿ ñèëà âçàèìîäåéñòâèÿ äâóõ éîá
-			//	float fGmassJtoI = fG * pow(massJtoI, 3) / pow(distance, 0.25f);
-			//	float fGmassItoJ = fG * pow(massItoJ, 3) / pow(distance, 0.25f);
+				//interaction force
+				float fGmassJtoI = fG * pow(massJtoI, 3) / pow(distance, 0.25f);
+				float fGmassItoJ = fG * pow(massItoJ, 3) / pow(distance, 0.25f);
 
-			//	/*
-			//	Ðàáîòàåò íà íåáîëüøèõ ðàññòîÿíèÿõ ìåæäó éîáàìè (100-2000)
-			//	float fGmassJtoI = fG * pow(massJtoI, 2) * sqrt(sqrt(distance)); //÷åì áîëüøå äèñòàíöèÿ òåì áîëüøå ñèëà ! ! ! !
-			//	float fGmassItoJ = fG * pow(massItoJ, 2) * sqrt(sqrt(distance));
-			//	*/
+				/*
+				Ð Ð°Ð±Ð¾Ñ‚Ð°ÐµÑ‚ Ð½Ð° Ð½ÐµÐ±Ð¾Ð»ÑŒÑˆÐ¸Ñ… Ñ€Ð°ÑÑÑ‚Ð¾ÑÐ½Ð¸ÑÑ… Ð¼ÐµÐ¶Ð´Ñƒ Ð¹Ð¾Ð±Ð°Ð¼Ð¸ (100-2000)
+				float fGmassJtoI = fG * pow(massJtoI, 2) * sqrt(sqrt(distance)); //Ñ‡ÐµÐ¼
+				Ð±Ð¾Ð»ÑŒÑˆÐµ Ð´Ð¸ÑÑ‚Ð°Ð½Ñ†Ð¸Ñ Ñ‚ÐµÐ¼ Ð±Ð¾Ð»ÑŒÑˆÐµ ÑÐ¸Ð»Ð° ! ! ! ! float fGmassItoJ = fG *
+				pow(massItoJ, 2) * sqrt(sqrt(distance));
+				*/
 
-			//	vec2 direction(
-			//		(*iter)->obj.getPosition().x > (*iter2)->obj.getPosition().x ? -1 : 1,
-			//		(*iter)->obj.getPosition().y > (*iter2)->obj.getPosition().y ? -1 : 1);
-				//if (collision)
-				//{
-				//	vec2 direction2(
-				//		(*iter)->obj.getPosition().x < (*iter2)->obj.getPosition().x ? -1 : 1,
-				//		(*iter)->obj.getPosition().y < (*iter2)->obj.getPosition().y ? -1 : 1);
-				//	if ((*iter2)->m > (*iter)->m)
-				//	{
-				//		(*iter)->addedAcceleration(vec2(fGmassJtoI, fGmassJtoI) * direction2);
-				//		float newR = (*iter)->r * massItoJ;
-				//		float newMass = (*iter)->m * 0.5f;
-				//		/*(*iter2)->addMass((*iter)->m * 0.5f);
-				//		(*iter2)->addRadius((*iter)->r * massItoJ);
-				//		(*iter)->addRadius(-newR);
-				//		(*iter)->addMass(-newMass);
-				//		delete objectsArray[i];
-				//		objectsArray.erase(objectsArray.begin() + i);*/
-				//	}
-				//	else
-				//	{
-				//		(*iter2)->addedAcceleration(vec2(fGmassItoJ, fGmassItoJ) * -direction2);
-				//		float newR = (*iter2)->r * massItoJ;
-				//		float newMass = (*iter2)->m * 0.5f;
-				//		/*
-				//		(*iter)->addMass(newMass);
-				//		(*iter)->addRadius(newR);
-				//		(*iter2)->addRadius(-newR);
-				//		(*iter2)->addMass(-newMass);
-				//		delete objectsArray[j];
-				//		objectsArray.erase(objectsArray.begin() + j);*/
-				//	}
-				//}
-				//if (!collision)
-				//{
-				//	//ìàêñèìàëüíî óìåíüøàÿåì ñèëó äëÿ éîáû ñ áîëüøåé ìàññîé
-				//	if ((*iter2)->m > (*iter)->m)
-				//	{
-				//		(*iter)->addedAcceleration(vec2(fGmassJtoI / sqrt(distance) * massJtoI, fGmassJtoI / sqrt(distance) * massJtoI) * direction);
-				//		(*iter2)->addedAcceleration(vec2(fGmassItoJ, fGmassItoJ) * -direction);
-				//	}
-				//	else
-				//	{
-				//		(*iter)->addedAcceleration(vec2(fGmassJtoI / sqrt(distance) * massJtoI, fGmassJtoI / sqrt(distance) * massJtoI) * direction);
-				//		(*iter2)->addedAcceleration(vec2(fGmassItoJ, fGmassItoJ) * -direction);
-				//	}
-				//}
-				sf::VertexArray triangle(sf::Lines, 2);
-				triangle[0].position = (*iter)->obj.getPosition();
-				triangle[1].position = (*iter2)->obj.getPosition();
-				triangle[0].color = sf::Color::Yellow;
-				triangle[1].color = sf::Color::Red;
-				vertex.emplace_back(triangle);
+				if (collision)
+					ifCollision((*iter), (*iter2));
+				vec2 direction((*iter)->obj.getPosition().x > (*iter2)->obj.getPosition().x ? -1 : 1,
+					(*iter)->obj.getPosition().y > (*iter2)->obj.getPosition().y ? -1 : 1);
+				if (!collision)
+				{
+					if (((*iter2) == biggestObject) || ((*iter) == biggestObject))
+					{
+						//Ð¼Ð°ÐºÑÐ¸Ð¼Ð°Ð»ÑŒÐ½Ð¾ ÑƒÐ¼ÐµÐ½ÑŒÑˆÐ°ÑÐµÐ¼ ÑÐ¸Ð»Ñƒ Ð´Ð»Ñ Ð¹Ð¾Ð±Ñ‹ Ñ Ð±Ð¾Ð»ÑŒÑˆÐµÐ¹ Ð¼Ð°ÑÑÐ¾Ð¹
+						if ((*iter2)->m > (*iter)->m)
+						{
+							(*iter)->addedAcceleration(vec2(fGmassJtoI, fGmassJtoI) * direction);
+							(*iter2)->addedAcceleration(vec2(fGmassItoJ / distance * massItoJ, fGmassItoJ / distance * massItoJ) * -direction);
+						}
+						else
+						{
+							(*iter)->addedAcceleration(vec2(fGmassJtoI / distance * massJtoI, fGmassJtoI / distance * massJtoI) * direction);
+							(*iter2)->addedAcceleration(vec2(fGmassItoJ, fGmassItoJ) * -direction);
+						}
+						calculateVertex((*iter)->obj.getPosition(),
+							(*iter2)->obj.getPosition());
+					}
+					/*else
+					{
+							(*iter)->addedAcceleration(vec2(fGmassItoJ * pow(massItoJ, 2)
+					/ sqrt(distance), fGmassItoJ / sqrt(distance) * pow(massItoJ, 2)) *
+					direction);
+							(*iter2)->addedAcceleration(vec2(fGmassJtoI * pow(massJtoI, 2)
+					/ sqrt(distance), fGmassJtoI / sqrt(distance) * pow(massJtoI, 2)) *
+					-direction); sf::VertexArray triangle(sf::Lines, 2);
+							triangle[0].position = (*iter)->obj.getPosition();
+							triangle[1].position = (*iter2)->obj.getPosition();
+							triangle[0].color = sf::Color::Green;
+							triangle[1].color = sf::Color::Green;
+							vertex.emplace_back(triangle);
+					}*/
+				}
 			}
 		}
-
 	}
+
 	void moveObjects()
 	{
 		for (CelestialObject* object : objectsArray)
-		{
 			object->addedPosition(object->acceleration * ftStep);
-		}
 	}
+
+	void calculateVertex(sf::Vector2f start, sf::Vector2f end)
+	{
+		sf::VertexArray triangle(sf::Lines, 2);
+		triangle[0].position = start;
+		triangle[1].position = end;
+		triangle[0].color = sf::Color::Green;
+		triangle[1].color = sf::Color::Green;
+		vertex.emplace_back(triangle);
+	}
+
 	void DrawingAllObjects(sf::RenderWindow& w)
 	{
 		for (CelestialObject* object : objectsArray)
 			w.draw(*object);
-		//Âèçóàëèçàöèÿ âåêòîðà velocity îáúåêòîâ 
+		//Ð’Ð¸Ð·ÑƒÐ°Ð»Ð¸Ð·Ð°Ñ†Ð¸Ñ Ð²ÐµÐºÑ‚Ð¾Ñ€Ð° velocity Ð¾Ð±ÑŠÐµÐºÑ‚Ð¾Ð²
 		for (CelestialObject* object : objectsArray)
 		{
 			sf::VertexArray triangle(sf::Lines, 2);
@@ -266,21 +321,20 @@ public:
 			triangle[1].color = sf::Color::Red;
 			w.draw(triangle);
 		}
-
 		for (const auto& v : vertex)
 			w.draw(v);
 	}
 
 	void Debug()
 	{
-		auto lambda_addNewObject = [this]()
-		{
-
+		auto lambda_addNewObject = [this]() {
 			ImGui::BeginChild("AddObject", ImVec2(ImGui::GetWindowSize().x - 20, ImGui::GetWindowSize().y - 40), true);
 			ImGui::PushItemWidth(80.f);
 			static vec2 pos;
-			ImGui::InputFloat("pos.x", &pos.x, 0, 0, 0);
 			ImGui::InputFloat("pos.y", &pos.y, 0, 0, 0);
+			ImGui::InputFloat("pos.x", &pos.x, 0, 0, 0);
+			if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
+				pos = w->mapPixelToCoords(sf::Mouse::getPosition(), *view);
 			ImGui::Separator();
 			static vec2 acceleration;
 			ImGui::InputFloat("vel.x", &acceleration.x, 0, 0, 0);
@@ -299,8 +353,22 @@ public:
 			}
 			ImGui::EndChild();
 		};
-		auto lambda_debugWindow = [this]()
-		{
+
+		auto lambda_set_viewport = [this]() {
+			ImGui::BeginChild("Select Object", ImVec2(ImGui::GetWindowSize().x - 20, ImGui::GetWindowSize().y - 40), true);
+			if (ImGui::Selectable("Free Move"))
+				centralObj = nullptr;
+			int i = 1;
+			for (const auto& obj : objectsArray)
+			{
+				if (ImGui::Selectable(("follow " + std::to_string(i)).c_str()))
+					centralObj = obj;
+				++i;
+			}
+			ImGui::EndChild();
+		};
+
+		auto lambda_debugWindow = [this]() {
 			ImGui::BeginChild("Objects", ImVec2(ImGui::GetWindowSize().x - 20, ImGui::GetWindowSize().y - 40), true);
 			int i = 0;
 			for (auto obj : objectsArray)
@@ -342,6 +410,9 @@ public:
 				if (ImGui::MenuItem("debugWindow", "", state == DebugWindow))
 					state = DebugWindow;
 
+				if (ImGui::MenuItem("setViewPort", "", state == SetViewPort))
+					state = SetViewPort;
+
 				ImGui::EndMenu();
 			}
 			ImGui::EndMainMenuBar();
@@ -354,6 +425,9 @@ public:
 		case DebugWindow:
 			lambda_debugWindow();
 			break;
+		case SetViewPort:
+			lambda_set_viewport();
+			break;
 		default:
 			break;
 		}
@@ -362,157 +436,86 @@ public:
 	}
 };
 
-//struct player {
-//private:
-//	sf::RectangleShape s;
-//public:
-//
-//	player()
-//	{
-//		s.setFillColor(sf::Color::Red);
-//		s.setSize({ 20.f,20.f });
-//		s.setPosition(0,0);
-//	}
-//	static player* create() { return new player(); }
-//	void move(sf::Vector2f newPos)
-//	{
-//		s.move(newPos);
-//	}
-//	void setPos(sf::Vector2f newPos)
-//	{
-//		s.setPosition(newPos);
-//	}
-//	void setSize(sf::Vector2f size)
-//	{
-//		s.setSize(size);
-//	}
-//	operator sf::Drawable& ()
-//	{
-//		return s;
-//	}
-//};
-//int main() {
-//
-//	sf::RenderWindow window(sf::VideoMode(800, 800), "SFML works!");
-//
-//	sol::state lua;
-//	lua.open_libraries(sol::lib::base);
-//	std::vector<player*> players;
-//	lua["players"] = &players;
-//	sol::usertype<player> player_type = lua.new_usertype<player>("player",
-//		sol::constructors<player()>(),
-//		"create", sol::factories(&player::create)
-//		);
-//	player_type["move"] = &player::move;
-//	player_type["setSize"] = &player::setSize;
-//	player_type["setPos"] = &player::setPos;
-//	lua.new_enum("Key",
-//		"A", sf::Keyboard::A,
-//		"D", sf::Keyboard::D,
-//		"S", sf::Keyboard::S,
-//		"W", sf::Keyboard::W
-//	);
-//	lua.set_function("IsKeyPressed", sf::Keyboard::isKeyPressed);
-//
-//	sol::usertype<sf::Vector2f> vec_type = lua.new_usertype<sf::Vector2f>("vec2",
-//		sol::constructors<sf::Vector2f(float, float)>()
-//		);
-//	vec_type["x"] = &sf::Vector2f::x;
-//	vec_type["y"] = &sf::Vector2f::y;
-//	lua.script_file("init_lua_script.lua");
-//	while (window.isOpen())
-//	{
-//		sf::Event event;
-//		while (window.pollEvent(event))
-//		{
-//			if (event.type == sf::Event::Closed)
-//			{
-//				for (auto i = 0; i < players.size(); i++)
-//					delete players[i];
-//				window.close();
-//			}
-//		}
-//		lua.script_file("update_lua_script.lua");
-//		window.clear();
-//		for (auto& item : players)
-//			window.draw(*item);
-//		window.display();
-//	}
-//	return 0;
-//}
-
+using namespace chrono;
 int main()
 {
+	sf::Context c;
 	tex1.loadFromFile("yoba3.png");
 	tex2.loadFromFile("yoba2.png");
 	tex3.loadFromFile("yoba4.png");
-
-	World world;
+	sf::RenderWindow window(sf::VideoMode(1800, 1000), "yobaSolarSystem");
+	window.setFramerateLimit(200);
+	sf::View view;
+	World world(&window, &view);
 
 	sol::state lua;
 	lua.open_libraries(sol::lib::base, sol::lib::math);
 	lua["world"] = &world;
-	sol::usertype<World> player_type = lua.new_usertype<World>("player",
-		sol::constructors<World()>(),
-		"addObject", &World::add,
-		"ForceOfGravity", &World::ForceOfGravity,
-		"isCollision", &World::isCollision,
-		"objects", &World::objectsArray
-		);
-	lua.new_usertype<CelestialObject>("CelestialObject",
-		sol::constructors<CelestialObject(vec2, vec2, int, int)>(),
-		
-		"addedAcceleration", &CelestialObject::addedAcceleration,
-		"obj", &CelestialObject::obj,
-		"addedPosition", &CelestialObject::addedPosition,
-		"addMass", &CelestialObject::addMass,
-		"getMass", & CelestialObject::getMass,
-		"addRadius", &CelestialObject::addRadius,
-		"getAcceleration", &CelestialObject::getAccelerationVec
-		);
+	sol::usertype<World> player_type = lua.new_usertype<World>(
+		"World", sol::constructors<World()>(), "addObject", &World::add,
+		"clearVertexArray", &World::clearVertexArray, "ifCollision",
+		&World::ifCollision, "setSprite", &World::setSprite, "ForceOfGravity",
+		&World::ForceOfGravity, "isCollision", &World::isCollision,
+		"calculateVertex", &World::calculateVertex, "objects",
+		&World::objectsArray);
+	lua.new_usertype<CelestialObject>(
+		"CObject", sol::constructors<CelestialObject(vec2, vec2, int, int)>(),
+		"addedAcceleration", &CelestialObject::addedAcceleration, "obj",
+		&CelestialObject::obj, "addedPosition", &CelestialObject::addedPosition,
+		"addMass", &CelestialObject::addMass, "mass", &CelestialObject::m,
+		"addRadius", &CelestialObject::addRadius, "acceleration",
+		&CelestialObject::acceleration, "pos", &CelestialObject::pos);
 	lua.set_function("multiply", &multiply);
-	sol::usertype<sf::Vector2f> vec_type = lua.new_usertype<sf::Vector2f>("vec2",
-		sol::constructors<sf::Vector2f(),sf::Vector2f(float, float)>()
-		);
+	lua.set_function("invert", &invert);
+	sol::usertype<sf::Vector2f> vec_type = lua.new_usertype<sf::Vector2f>(
+		"vec2", sol::constructors<sf::Vector2f(), sf::Vector2f(float, float)>());
 	vec_type["x"] = &sf::Vector2f::x;
 	vec_type["y"] = &sf::Vector2f::y;
 
-	sol::usertype<sf::CircleShape> circle_type = lua.new_usertype<sf::CircleShape>("circleShape",
-		sol::constructors<sf::CircleShape()>()
-		);
+	sol::usertype<sf::CircleShape> circle_type =
+		lua.new_usertype<sf::CircleShape>("circleShape",
+			sol::constructors<sf::CircleShape()>());
 	circle_type["getPos"] = &sf::CircleShape::getPosition;
 
-	sf::View view;
+
 	sf::FloatRect viewPort = { 0, 0, 1920, 1080 };
 	view.reset(viewPort);
 	vec2 center = { viewPort.width / 2, viewPort.height / 2 };
-	sf::RenderWindow window(sf::VideoMode(1800, 1000), "yobaSolarSystem");
-	window.setFramerateLimit(200);
+
 	ImGui::SFML::Init(window);
 
 	srand(time(0));
 	/*for (int i = 1; i < 4; i++)
 	{
-		int r = rand() % 30 + 10;
-		int m = r * 40;
-		vec2 position(100 + rand() % 1000, 100 + rand() % 800);
-		vec2 direction(1 - rand() % 2, (1 - rand() % 2));
-		world.add(CelestialObject(position, direction, r, m));
+			int r = rand() % 30 + 10;
+			int m = r * 40;
+			vec2 position(100 + rand() % 1000, 100 + rand() % 800);
+			vec2 direction(1 - rand() % 2, (1 - rand() % 2));
+			world.add(CelestialObject(position, direction, r, m));
 	}*/
 
-	world.add(CelestialObject(vec2(300, 300), vec2(0, 0), 25, 1200));
-	//world.add(CelestialObject(vec2(300, 980), vec2(3.1f, 0), 15, 735));
-	//world.add(CelestialObject(vec2(300, 590), vec2(2.9f, 0), 10, 600));
-	world.add(CelestialObject(vec2(300, 900), vec2(2.f, 0), 10, 705));
-
-	float lastFt{ 0.f };
-	float currentSlice{ 0.f };
-	auto f = lua.load_file("update_lua_script.lua");
+	/*world.add(CelestialObject(vec2(300, 300), vec2(0, 0), 25, 1200));
+	world.add(CelestialObject(vec2(300, 980), vec2(3.1f, 0), 15, 735));
+	world.add(CelestialObject(vec2(300, 590), vec2(2.9f, 0), 10, 600));
+	world.add(CelestialObject(vec2(300, 900), vec2(2.f, 0), 10, 705));*/
 	lua.script_file("init_lua_script.lua");
+
 	sf::Clock deltaClock;
+	// auto f = lua.load_file("update_lua_script.lua");
+	sf::Clock MainClock;
+	double Time = 0.0;
+	const double DeltaTime = 0.01;
+
+	double CurrentTime = MainClock.getElapsedTime().asSeconds();
+	double Accumulator = 0.0;
+	world.biggestObject = world.objectsArray[0];
 	while (window.isOpen())
 	{
-		auto timePoint1(chrono::high_resolution_clock::now());
+		double NewTime = MainClock.getElapsedTime().asSeconds();
+		double FrameTime = NewTime - CurrentTime;
+		CurrentTime = NewTime;
+		Accumulator += FrameTime;
+
 		sf::Event event;
 		while (window.pollEvent(event))
 		{
@@ -541,31 +544,25 @@ int main()
 			center.y += 10;
 		if (sf::Keyboard::isKeyPressed(sf::Keyboard::D))
 			center.x += 10;
-		currentSlice += lastFt;
 		ImGui::SFML::Update(window, deltaClock.restart());
-		//for (; currentSlice >= ftSlice; currentSlice -= ftSlice)
-		//{
-			f.call();
-			//world.accelerationObjects(ftStep);
+		world.Debug();
+		while (Accumulator >= DeltaTime)
+		{
+			// lua.script_file("update_lua_script.lua");
+			// lua.do_file("update_lua_script.lua");
+			world.accelerationObjects(1.f);
 			world.moveObjects();
-		//}
-
+			Accumulator -= DeltaTime;
+			Time += DeltaTime;
+		}
 		view.reset(viewPort);
-		view.setCenter(center);
+		auto c = world.Center();
+		view.setCenter(((c == sf::Vector2f{ 0,0 }) ? center : c));
 		window.setView(view);
 		window.clear();
 		world.DrawingAllObjects(window);
 		ImGui::SFML::Render(window);
 		window.display();
-		auto timePoint2(chrono::high_resolution_clock::now());
-		auto elapsedTime(timePoint2 - timePoint1);
-		float ft{ chrono::duration_cast<chrono::duration<float, milli>>(elapsedTime).count() };
-
-		lastFt = ft;
-
-		auto ftSeconds(ft / 1000.f);
-		auto fps(1.f / ftSeconds);
-		window.setTitle("FT: " + to_string(ft) + "\tFPS: " + to_string(fps));
 	}
 
 	return 0;
